@@ -12,6 +12,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { allReports, runRegression, saveReport, DEFAULT_SCENARIOS, type RegressionReport, type Scenario, type SessionRunner, type SessionRunResult } from './runner.ts'
 import { normalizeScenarios } from './scenarios.ts'
+import { addPair, judgePair, shadowStats, pendingPairs, type ShadowJudged } from './shadow.ts'
 
 export const name = 'dsh-regression'
 export const provide = ['dsh-regression']
@@ -128,6 +129,13 @@ export function apply(ctx: Context): void {
     createHostRunner,
     reports: allReports,
     scenarios: DEFAULT_SCENARIOS,
+    /** v2 影子测试：盲测对与统计 */
+    shadow: {
+      addPair,
+      judgePair,
+      stats: (windowDays?: number) => shadowStats(windowDays ?? 30),
+      pending: (limit?: number) => pendingPairs(limit ?? 10),
+    },
   }
   try {
     c.provide?.('dsh-regression', service)
@@ -193,6 +201,48 @@ export function apply(ctx: Context): void {
           for (const d of disposers) d()
         })
       }
+      // ── v2 影子测试路由 ──
+      disposers.push(web.register({
+        kind: 'exact',
+        path: '/dsh-regression/shadow/stats',
+        handler: (_req, res) => {
+          try { respondJson(res, 200, { ok: true, stats: shadowStats(30) }) }
+          catch (e) { respondJson(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }) }
+        },
+      }))
+      disposers.push(web.register({
+        kind: 'exact',
+        path: '/dsh-regression/shadow/pending',
+        handler: (_req, res) => {
+          try { respondJson(res, 200, { ok: true, pairs: pendingPairs(10) }) }
+          catch (e) { respondJson(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) }) }
+        },
+      }))
+      disposers.push(web.register({
+        kind: 'exact',
+        path: '/dsh-regression/shadow/add',
+        handler: async (req, res) => {
+          if (req.method !== 'POST' || !sameOrigin(req)) { respondJson(res, req.method === 'POST' ? 403 : 405, { ok: false, error: 'denied' }); return }
+          try {
+            const body = (await readJsonBody(req)) as { visitorInput?: unknown; masterReply?: unknown; twinReply?: unknown; ref?: unknown }
+            const r = addPair({ visitorInput: body.visitorInput, masterReply: body.masterReply, twinReply: body.twinReply, ref: body.ref })
+            respondJson(res, r.ok ? 200 : (r.duplicate === true ? 409 : 400), r)
+          } catch (e) { respondJson(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) }) }
+        },
+      }))
+      disposers.push(web.register({
+        kind: 'exact',
+        path: '/dsh-regression/shadow/judge',
+        handler: async (req, res) => {
+          if (req.method !== 'POST' || !sameOrigin(req)) { respondJson(res, req.method === 'POST' ? 403 : 405, { ok: false, error: 'denied' }); return }
+          try {
+            const body = (await readJsonBody(req)) as { pairId?: string; judged?: ShadowJudged }
+            const r = judgePair(String(body.pairId ?? ''), body.judged as ShadowJudged)
+            respondJson(res, r.ok ? 200 : 400, r)
+          } catch (e) { respondJson(res, 400, { ok: false, error: e instanceof Error ? e.message : String(e) }) }
+        },
+      }))
+
       c.logger?.info?.('[dsh-regression] 路由已注册 (/dsh-regression/*)')
     })
   } catch (e) {

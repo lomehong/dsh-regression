@@ -1,7 +1,7 @@
 {
   "name": "@dsh-extra/dsh-regression",
-  "version": "0.1.0",
-  "description": "数字分身 · 人格回归：场景集 fixtures + dry-run 评估 + 报告存储（机制验证用 ScriptedRunner；HostRunner 由桌面壳/jobs 注入）。实施计划 T4。",
+  "version": "0.2.0",
+  "description": "v2：影子测试协议（盲测对/判定不可改/滚动窗口分辨不出率/数据清理）+ shadow 路由",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
