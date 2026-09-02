@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-regression
+      name: '@dsh-extra/dsh-regression'
+      inject: []
+      config: {}
