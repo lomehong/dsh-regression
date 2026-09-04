@@ -33,6 +33,6 @@
     "typecheck": "tsc -b tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.0-rc.0"
+    "@deepseek-ai/cordis": "^4.0.1-rc.4"
   }
 }
