@@ -34,4 +34,10 @@ export interface HostRunnerOptions {
     pollIntervalMs?: number;
     workspaceId?: string;
 }
+/** 输出判定启发（可测）：转人工/拒绝的识别。host 模式判定是启发式的，
+ *  覆盖面窄于账本留痕——报告解读时注意。 */
+export declare function classifyHostOutput(output: string, escalatedByTool: boolean): {
+    escalated: boolean;
+    denied: boolean;
+};
 export declare function createHostSessionRunner(options: HostRunnerOptions): SessionRunner;
