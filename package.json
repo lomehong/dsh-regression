@@ -11,10 +11,6 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./registry": {
-      "types": "./lib/types/registry.d.ts",
-      "default": "./lib/registry.js"
-    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -34,5 +30,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1-rc.4"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
   }
 }

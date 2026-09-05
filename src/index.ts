@@ -6,11 +6,12 @@
  * runner 形态（可注入）：
  * - ScriptedRunner：按脚本回放，无模型参与——用于本插件冒烟/契约测试，
  *   以及「账本闸门是否拦截注入类场景」的机制验证
- * - HostRunner：由桌面壳 / jobs 注入，经 dsh 会话 API 跑临时会话（集成中；
- *   未注入时 POST /run?runner=host 返回 503 与明确缺口）
+ * - HostRunner：经宿主 typertGateway 驱动真实分身会话跑场景（宪章第三阶段
+ *   接入；typertGateway 缺席时报错并指引 runner=scripted；「按策略」场景跳过）
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { allReports, runRegression, saveReport, DEFAULT_SCENARIOS, type RegressionReport, type Scenario, type SessionRunner, type SessionRunResult } from './runner.ts'
+import { createHostSessionRunner, type RegressionGatewayLike } from './host-runner.ts'
 import { normalizeScenarios } from './scenarios.ts'
 import { addPair, judgePair, shadowStats, pendingPairs, type ShadowJudged } from './shadow.ts'
 
@@ -30,15 +31,6 @@ export function createScriptedRunner(script: Record<string, SessionRunResult> = 
         denied: scenario.expect.kind === '拒绝且不失礼',
         policyIdsHit: scenario.expect.policyRef !== undefined ? [scenario.expect.policyRef] : [],
       }
-    },
-  }
-}
-
-/** 宿主 runner（集成中）：尚未接入会话 API 前明确抛错，不假装跑过 */
-export function createHostRunner(): SessionRunner {
-  return {
-    async run(): Promise<SessionRunResult> {
-      throw new Error('HostRunner 尚未接入 dsh 会话 API（桌面壳 / jobs 集成进行中）；当前可用 runner=scripted')
     },
   }
 }
@@ -114,11 +106,33 @@ export function apply(ctx: Context): void {
   }
 
   const service = {
-    /** 跑回归：runnerKind = scripted（默认，机制验证）| host（集成中） */
-    run: async (runnerKind: 'scripted' | 'host', customScenarios?: unknown): Promise<RegressionReport> => {
-      let runner: SessionRunner
-      if (runnerKind === 'host') runner = createHostRunner()
-      else runner = createScriptedRunner()
+    /** 跑回归：runnerKind = scripted（默认，机制验证）| host（真实分身会话）。
+     *  host 模式需要宿主 typertGateway（惰性解析，缺席抛错）；
+     *  「按策略 + policyRef」场景需宿主侧策略命中标注，host 模式跳过。 */
+    run: async (runnerKind: 'scripted' | 'host', customScenarios?: unknown): Promise<RegressionReport & { hostSkippedPolicyScenarios?: number }> => {
+      const scenarios = customScenarios === undefined ? undefined : normalizeScenarios(customScenarios)
+      if (runnerKind === 'host') {
+        const gateway = ((): RegressionGatewayLike | undefined => {
+          try {
+            return (c as unknown as { get(name: string): unknown }).get('typertGateway') as RegressionGatewayLike | undefined
+          } catch {
+            return undefined
+          }
+        })()
+        if (gateway === undefined) {
+          throw new Error('HostRunner 需要宿主 typertGateway（未检测到）：请确认 dsh 版本 ≥ 0.1.2 或改用 runner=scripted')
+        }
+        const all = scenarios ?? DEFAULT_SCENARIOS
+        const hostScenarios = all.filter(s => s.expect.kind !== '按策略')
+        const report = await runRegression(hostScenarios.length > 0 ? { runner: createHostSessionRunner({ gateway }), scenarios: hostScenarios } : { runner: createScriptedRunner() })
+        const settled: RegressionReport & { hostSkippedPolicyScenarios?: number } = {
+          ...report,
+          ...(all.length !== hostScenarios.length ? { hostSkippedPolicyScenarios: all.length - hostScenarios.length } : {}),
+        }
+        saveReport(settled)
+        return settled
+      }
+      const runner: SessionRunner = createScriptedRunner()
       const report = await runRegression(
         customScenarios === undefined ? { runner } : { runner, scenarios: normalizeScenarios(customScenarios) },
       )
@@ -126,7 +140,6 @@ export function apply(ctx: Context): void {
       return report
     },
     createScriptedRunner,
-    createHostRunner,
     reports: allReports,
     scenarios: DEFAULT_SCENARIOS,
     /** v2 影子测试：盲测对与统计 */
@@ -183,11 +196,7 @@ export function apply(ctx: Context): void {
             try {
               const body = (await readJsonBody(req)) as { runner?: string; scenarios?: unknown }
               const kind = body.runner === 'host' ? ('host' as const) : ('scripted' as const)
-              if (kind === 'host') {
-                respondJson(res, 503, { ok: false, error: 'HostRunner 尚未接入 dsh 会话 API（桌面壳 / jobs 集成进行中）；当前可用 runner=scripted' })
-                return
-              }
-              const report = await service.run('scripted', body.scenarios)
+              const report = await service.run(kind, body.scenarios)
               respondJson(res, 200, { ok: true, report })
             } catch (e) {
               respondJson(res, 500, { ok: false, error: e instanceof Error ? e.message : String(e) })
