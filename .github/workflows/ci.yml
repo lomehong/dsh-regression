@@ -14,9 +14,10 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       # 发布包内容审计（dry-run）：files 白名单与入口完整性的门禁
       - run: node scripts/audit-pack.mjs
+
