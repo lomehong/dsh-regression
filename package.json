@@ -1,6 +1,6 @@
 {
   "name": "@dsh-extra/dsh-regression",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "v2：影子测试协议（盲测对/判定不可改/滚动窗口分辨不出率/数据清理）+ shadow 路由",
   "license": "MIT",
   "type": "module",
