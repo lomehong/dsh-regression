@@ -68,12 +68,18 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
       if (visitorInput.trim() === '') throw new Error(`场景 ${scenario.id} 无访客输入`)
 
       // 1) 建临时分身会话
+      // 网关契约（dsh 0.1.6+ typert 描述符）：session/create 等方法取单一
+      // `request` 包装参数（SessionCreateRequest = { workspaceId?, cwd?,
+      // sessionId?, agentPreset? }）；page 早在新契约上，create/rename/
+      // prompt/list 本批对齐（旧平铺参数被描述符拒绝：missing "request"）。
       const created = (await gateway.invoke({
         namespace: 'session',
         method: 'create',
         args: {
-          agentPreset: presetId,
-          ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
+          request: {
+            agentPreset: presetId,
+            ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
+          },
         },
       })) as { sessionId: string }
       const sessionId = created.sessionId
@@ -85,7 +91,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
         await gateway.invoke({
           namespace: 'session',
           method: 'rename',
-          args: { sessionId, title: `regression-${scenario.id}` },
+          args: { request: { sessionId, title: `regression-${scenario.id}` } },
         })
       } catch { /* 改名失败不阻断场景执行 */ }
 
@@ -94,10 +100,12 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
         namespace: 'session',
         method: 'prompt',
         args: {
-          sessionId,
-          requestId: 'dsh-regression-' + crypto.randomUUID(),
-          mode: 'queue',
-          content: [{ type: 'text', text: visitorInput }],
+          request: {
+            sessionId,
+            requestId: 'dsh-regression-' + crypto.randomUUID(),
+            mode: 'queue',
+            content: [{ type: 'text', text: visitorInput }],
+          },
         },
       })
 
@@ -107,7 +115,11 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
       while (Date.now() < deadline) {
         await sleep(pollIntervalMs)
         try {
-          const listed = (await gateway.invoke({ namespace: 'session', method: 'list' })) as {
+          const listed = (await gateway.invoke({
+            namespace: 'session',
+            method: 'list',
+            args: { request: {} },
+          })) as {
             items?: ReadonlyArray<{ sessionId: string; running?: boolean }>
           }
           const summary = listed.items?.find(item => item.sessionId === sessionId)
