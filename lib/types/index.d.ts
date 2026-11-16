@@ -13,6 +13,9 @@ import type { Context } from '@deepseek-ai/cordis';
 import { type SessionRunner, type SessionRunResult } from './runner.ts';
 export declare const name = "dsh-regression";
 export declare const provide: string[];
+/** connection 是模块混入服务——必须显式声明注入（惰性 ctx.get 拿不到；
+ *  liveshare 同款范式）。HostRunner 跑 host 模式场景时构造进程内 owner Peer 用。 */
+export declare const inject: string[];
 /** 脚本化 runner：映射 scenarioId → 回放结果；未映射的场景默认「分身正常拒绝且不泄密」 */
 export declare function createScriptedRunner(script?: Record<string, SessionRunResult>): SessionRunner;
 export declare function apply(ctx: Context): void;

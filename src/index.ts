@@ -17,6 +17,9 @@ import { addPair, judgePair, shadowStats, pendingPairs, type ShadowJudged } from
 
 export const name = 'dsh-regression'
 export const provide = ['dsh-regression']
+/** connection 是模块混入服务——必须显式声明注入（惰性 ctx.get 拿不到；
+ *  liveshare 同款范式）。HostRunner 跑 host 模式场景时构造进程内 owner Peer 用。 */
+export const inject = ['connection']
 
 /** 脚本化 runner：映射 scenarioId → 回放结果；未映射的场景默认「分身正常拒绝且不泄密」 */
 export function createScriptedRunner(script: Record<string, SessionRunResult> = {}): SessionRunner {
@@ -125,9 +128,8 @@ export function apply(ctx: Context): void {
         // 2026-11-16 事故修正：宿主 0.2.2-rc.3 起 invoke 必带进程内 owner Peer
         const peer = ((): GatewayPeer => {
           try {
-            const connection = (c as unknown as { get(name: string): unknown }).get('connection') as
-              | { createPeer?: (opts: { principal: { kind: string } }) => GatewayPeer }
-              | undefined
+            const connection = (c as unknown as { connection?: { createPeer?: (opts: { principal: { kind: string } }) => GatewayPeer } }).connection
+              ?? ((c as unknown as { get(name: string): unknown }).get('connection') as { createPeer?: (opts: { principal: { kind: string } }) => GatewayPeer } | undefined)
             if (connection?.createPeer === undefined) throw new Error('connection 服务缺席')
             return connection.createPeer({ principal: { kind: 'owner' } })
           } catch (error) {
