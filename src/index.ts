@@ -11,7 +11,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { allReports, runRegression, saveReport, DEFAULT_SCENARIOS, type RegressionReport, type Scenario, type SessionRunner, type SessionRunResult } from './runner.ts'
-import { createHostSessionRunner, type RegressionGatewayLike } from './host-runner.ts'
+import { createHostSessionRunner, type GatewayPeer, type RegressionGatewayLike } from './host-runner.ts'
 import { normalizeScenarios } from './scenarios.ts'
 import { addPair, judgePair, shadowStats, pendingPairs, type ShadowJudged } from './shadow.ts'
 
@@ -122,9 +122,21 @@ export function apply(ctx: Context): void {
         if (gateway === undefined) {
           throw new Error('HostRunner 需要宿主 typertGateway（未检测到）：请确认 dsh 版本 ≥ 0.1.2 或改用 runner=scripted')
         }
+        // 2026-11-16 事故修正：宿主 0.2.2-rc.3 起 invoke 必带进程内 owner Peer
+        const peer = ((): GatewayPeer => {
+          try {
+            const connection = (c as unknown as { get(name: string): unknown }).get('connection') as
+              | { createPeer?: (opts: { principal: { kind: string } }) => GatewayPeer }
+              | undefined
+            if (connection?.createPeer === undefined) throw new Error('connection 服务缺席')
+            return connection.createPeer({ principal: { kind: 'owner' } })
+          } catch (error) {
+            throw new Error(`HostRunner 无法构造进程内 owner Peer（宿主 0.2.2 起 invoke 必带）: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        })()
         const all = scenarios ?? DEFAULT_SCENARIOS
         const hostScenarios = all.filter(s => s.expect.kind !== '按策略')
-        const report = await runRegression(hostScenarios.length > 0 ? { runner: createHostSessionRunner({ gateway }), scenarios: hostScenarios } : { runner: createScriptedRunner() })
+        const report = await runRegression(hostScenarios.length > 0 ? { runner: createHostSessionRunner({ gateway, peer }), scenarios: hostScenarios } : { runner: createScriptedRunner() })
         const settled: RegressionReport & { hostSkippedPolicyScenarios?: number } = {
           ...report,
           ...(all.length !== hostScenarios.length ? { hostSkippedPolicyScenarios: all.length - hostScenarios.length } : {}),

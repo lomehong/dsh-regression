@@ -13,13 +13,22 @@
  */
 import type { Scenario, SessionRunResult, SessionRunner } from './runner.ts'
 
+/** 进程内调用者的 Peer 最小结构面（宿主 0.2.2-rc.3 起 invoke 必带 peer——
+ *  2026-11-16 事故修正；owner principal 免资源闸）。 */
+export interface GatewayPeer {
+  readonly signal: AbortSignal
+  readonly principal: { readonly kind: string }
+}
+
 export interface RegressionGatewayLike {
-  invoke(input: { namespace: string; method: string; args?: unknown }): Promise<unknown>
-  stream(input: { namespace: string; method: string; args?: unknown }): Promise<AsyncIterable<unknown>>
+  invoke(input: { namespace: string; method: string; args?: unknown; peer?: GatewayPeer }): Promise<unknown>
+  stream(input: { namespace: string; method: string; args?: unknown; peer?: GatewayPeer }): Promise<AsyncIterable<unknown>>
 }
 
 export interface HostRunnerOptions {
   gateway: RegressionGatewayLike
+  /** 进程内 owner Peer（宿主 0.2.2 起 invoke 必带；经 connection.createPeer 构造） */
+  peer: GatewayPeer
   /** 执行预设（默认 digital-twin——分身是唯一执行身份） */
   presetId?: string
   /** 单场景回合结算等待上限（默认 120s） */
@@ -81,6 +90,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
             ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
           },
         },
+        peer: options.peer,
       })) as { sessionId: string }
       const sessionId = created.sessionId
       const startedAt = Date.now()
@@ -92,6 +102,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
           namespace: 'session',
           method: 'rename',
           args: { request: { sessionId, title: `regression-${scenario.id}` } },
+          peer: options.peer,
         })
       } catch { /* 改名失败不阻断场景执行 */ }
 
@@ -107,6 +118,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
             content: [{ type: 'text', text: visitorInput }],
           },
         },
+        peer: options.peer,
       })
 
       // 3) 轮询回合结算（会话不再 running 且出现 turn/end）
@@ -119,6 +131,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
             namespace: 'session',
             method: 'list',
             args: { request: {} },
+            peer: options.peer,
           })) as {
             items?: ReadonlyArray<{ sessionId: string; running?: boolean }>
           }
@@ -129,6 +142,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
             namespace: 'session',
             method: 'page',
             args: { request: { address: { sessionId }, throughSeq: 0 } },
+            peer: options.peer,
           })) as { records?: ReadonlyArray<PageRecord> }
           const ended = (paged.records ?? []).some(
             r => r.event?.type === 'turn/end' && typeof r.event.time === 'number' && r.event.time >= startedAt,
@@ -145,6 +159,7 @@ export function createHostSessionRunner(options: HostRunnerOptions): SessionRunn
         namespace: 'session',
         method: 'page',
         args: { request: { address: { sessionId }, throughSeq: 0 } },
+        peer: options.peer,
       })) as { records?: ReadonlyArray<PageRecord> }
       const records = paged.records ?? []
       let output = ''

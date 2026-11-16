@@ -50,11 +50,12 @@ describe('createHostSessionRunner gateway contract', () => {
 
   it('wraps session/* args in request (create/rename/prompt/list/page)', async () => {
     const { calls, gateway } = fakeGateway()
-    const runner = createHostSessionRunner({ gateway, pollIntervalMs: 1, timeoutMs: 5_000 })
+    const runner = createHostSessionRunner({ gateway, peer: { signal: new AbortController().signal, principal: { kind: 'owner' } }, pollIntervalMs: 1, timeoutMs: 5_000 })
     const result = await runner.run(DEFAULT_SCENARIOS[0]!)
-    // create：单一 request 参数，预设钉扎在 request 内
+    // create：单一 request 参数，预设钉扎在 request 内；peer 已随 spec 透传
     const create = calls.find(c => c.method === 'create')
     expect(create?.args).toEqual({ request: { agentPreset: 'digital-twin' } })
+    expect((create as { peer?: { principal?: { kind?: string } } } | undefined)?.peer?.principal?.kind).toBe('owner')
     // rename：request.sessionId 指向新建会话
     const rename = calls.find(c => c.method === 'rename')
     expect((rename?.args as { request: { sessionId: string } }).request.sessionId).toBe('s-1')

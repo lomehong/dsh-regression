@@ -12,20 +12,32 @@
  *   由调用方过滤（index.ts 路由）。
  */
 import type { SessionRunner } from './runner.ts';
+/** 进程内调用者的 Peer 最小结构面（宿主 0.2.2-rc.3 起 invoke 必带 peer——
+ *  2026-11-16 事故修正；owner principal 免资源闸）。 */
+export interface GatewayPeer {
+    readonly signal: AbortSignal;
+    readonly principal: {
+        readonly kind: string;
+    };
+}
 export interface RegressionGatewayLike {
     invoke(input: {
         namespace: string;
         method: string;
         args?: unknown;
+        peer?: GatewayPeer;
     }): Promise<unknown>;
     stream(input: {
         namespace: string;
         method: string;
         args?: unknown;
+        peer?: GatewayPeer;
     }): Promise<AsyncIterable<unknown>>;
 }
 export interface HostRunnerOptions {
     gateway: RegressionGatewayLike;
+    /** 进程内 owner Peer（宿主 0.2.2 起 invoke 必带；经 connection.createPeer 构造） */
+    peer: GatewayPeer;
     /** 执行预设（默认 digital-twin——分身是唯一执行身份） */
     presetId?: string;
     /** 单场景回合结算等待上限（默认 120s） */
